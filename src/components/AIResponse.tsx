@@ -120,8 +120,8 @@ const AIResponse: React.FC<AIResponseProps> = ({
 
 请用口语化中文回答，避免机械术语堆砌，必要时用类比来解释，比如"这个集装箱调度就像是在玩华容道"。不要使用括号，不要描述动作，只需要生成对话内容。`;
 
-      // 发送请求到自定义API路由
-      const response = await fetch('/api/deepseek', {
+      // 发送请求到阿里云百炼API路由
+      const response = await fetch('/api/alibaba', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -131,34 +131,21 @@ const AIResponse: React.FC<AIResponseProps> = ({
             { role: "system", content: systemPrompt },
             { role: "user", content: userInput }
           ],
-          temperature: 0.7
+          temperature: 0.7,
+          model: 'qwen-plus' // 使用通义千问Plus模型
         }),
       });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        let errorObj;
-        try {
-          errorObj = JSON.parse(errorText);
-        } catch (e) {
-          // 如果不是JSON格式
-          errorObj = { error: errorText };
-        }
-        
-        // 特殊处理504超时错误
-        if (response.status === 504 || errorObj.timeout) {
-          throw new Error('服务器响应超时，请稍后重试');
-        }
-        
-        throw new Error(`请求失败 (${response.status}): ${errorObj.error || errorText}`);
-      }
-
+      // 获取响应内容
       const data = await response.json();
       
-      if (data.error) {
-        throw new Error(data.error);
+      // 检查错误，但避免中断包含备选回复的响应
+      if (!response.ok && !data.choices) {
+        const errorMessage = data.error || `请求失败 (${response.status})`;
+        throw new Error(errorMessage);
       }
 
+      // 处理响应
       const aiText = data.choices[0].message.content;
       
       // 更新响应
@@ -194,9 +181,11 @@ const AIResponse: React.FC<AIResponseProps> = ({
     } catch (error: any) {
       console.error('处理响应时出错:', error);
       
-      // 特殊处理超时错误
+      // 修改超时错误处理部分
       if (error.message && error.message.includes('超时')) {
-        setError(`${error.message}（请求处理时间较长）`);
+        setError(`${error.message}。请稍后重试`);
+        setIsProcessing(false);
+        return;
       } else if (error.response) {
         console.error('错误响应数据:', error.response.data);
         console.error('错误状态码:', error.response.status);
@@ -208,7 +197,12 @@ const AIResponse: React.FC<AIResponseProps> = ({
         setError(`处理失败: ${error.message || 'API请求失败'}`);
       }
     } finally {
-      setIsProcessing(false);
+      // 安全地检查error变量
+      try {
+        setIsProcessing(false);
+      } catch (e) {
+        console.error('清理状态时出错:', e);
+      }
     }
   };
 

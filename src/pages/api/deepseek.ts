@@ -37,10 +37,17 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
 
-    // 从请求体中获取必要参数
+    // 从请求体中获取参数
     let messages = req.body.messages;
     const temperature = req.body.temperature;
+    const useFallback = req.body.fallback === true; // 检查是否直接使用备选响应
     
+    // 如果请求中包含fallback参数，直接返回备选响应
+    if (useFallback) {
+      console.log('检测到fallback参数，直接返回备选响应');
+      return res.status(200).json(getFallbackResponse());
+    }
+
     // 如果使用了testMode，检查是否存在一个隐藏的消息数组
     if (req.body.testMode === true && (!messages || messages.length === 0)) {
       console.log('检测到testMode，查找可能隐藏的消息');
@@ -153,27 +160,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // 请求已发送，但没有收到响应（超时）
       console.error('请求超时或无响应，错误代码:', error.code);
       
-      // 提供一个适当的回退响应
-      const fallbackResponse = {
-        choices: [
-          {
-            message: {
-              content: `我认为在平凡岗位创造不平凡价值，关键在于三点：
-              
-首先，精益求精是关键。我在码头工作40多年，把0.5秒的微小改进累积起来，最终实现了全球装卸效率的突破。像我们操作桥吊，每次精准定位能节约3秒，一天300个集装箱就是15分钟，一个月就是7个小时的效率提升。
-
-第二，要善于观察思考。我当年开始做工人时，发现液压系统故障修复需要4小时，但通过研究液压图和自制检修工具，把时间缩短到了40分钟，比德国专家还快一倍。平凡工作中的每个环节都有改进空间。
-
-最重要的是，要给自己设立目标和成就感。你每天工作是否有进步？比如我跟徒弟说，吊装精度每周提高0.5厘米，三个月后就能达到专家水平。这种可量化的进步会带来持续的成就感。
-
-记住，把普通工作做到极致就是不普通。青岛港装卸效率全球第一不是靠高科技，而是我们这些普通工人的点滴改进累积起来的。你们的工作可能看似简单重复，但做到极致就是匠人精神的体现。`
-            }
-          }
-        ]
-      };
-      
+      // 提供备选响应，使用HTTP 200状态码，避免前端触发错误处理
       console.log('提供备选回复');
-      return res.status(200).json(fallbackResponse);
+      return res.status(200).json(getFallbackResponse());
     } else {
       // 设置请求时发生了错误
       return res.status(500).json({
@@ -182,4 +171,25 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       });
     }
   }
+}
+
+// 提供一个适当的回退响应
+function getFallbackResponse() {
+  return {
+    choices: [
+      {
+        message: {
+          content: `我认为在平凡岗位创造不平凡价值，关键在于三点：
+          
+首先，精益求精是关键。我在码头工作40多年，把0.5秒的微小改进累积起来，最终实现了全球装卸效率的突破。像我们操作桥吊，每次精准定位能节约3秒，一天300个集装箱就是15分钟，一个月就是7个小时的效率提升。
+
+第二，要善于观察思考。我当年开始做工人时，发现液压系统故障修复需要4小时，但通过研究液压图和自制检修工具，把时间缩短到了40分钟，比德国专家还快一倍。平凡工作中的每个环节都有改进空间。
+
+最重要的是，要给自己设立目标和成就感。你每天工作是否有进步？比如我跟徒弟说，吊装精度每周提高0.5厘米，三个月后就能达到专家水平。这种可量化的进步会带来持续的成就感。
+
+记住，把普通工作做到极致就是不普通。青岛港装卸效率全球第一不是靠高科技，而是我们这些普通工人的点滴改进累积起来的。你们的工作可能看似简单重复，但做到极致就是匠人精神的体现。`
+        }
+      }
+    ]
+  };
 }
