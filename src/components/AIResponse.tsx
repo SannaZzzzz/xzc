@@ -137,12 +137,30 @@ const AIResponse: React.FC<AIResponseProps> = ({
       });
 
       // 获取响应内容
-      const data = await response.json();
+      let data;
+      try {
+        const responseText = await response.text();
+        try {
+          // 尝试解析JSON
+          data = JSON.parse(responseText);
+        } catch (jsonError) {
+          // 如果解析失败，记录原始响应并抛出错误
+          console.error('JSON解析失败，原始响应:', responseText);
+          throw new Error(`响应不是有效的JSON: ${responseText.substring(0, 100)}...`);
+        }
+      } catch (parseError: any) {
+        throw new Error(`处理响应失败: ${parseError.message}`);
+      }
       
-      // 检查错误，但避免中断包含备选回复的响应
-      if (!response.ok && !data.choices) {
-        const errorMessage = data.error || `请求失败 (${response.status})`;
+      // 检查错误
+      if (!response.ok) {
+        const errorMessage = data.error || data.message || `请求失败 (${response.status})`;
         throw new Error(errorMessage);
+      }
+
+      // 确认响应中包含必要的数据
+      if (!data.choices || !data.choices[0] || !data.choices[0].message) {
+        throw new Error('API响应格式不正确');
       }
 
       // 处理响应

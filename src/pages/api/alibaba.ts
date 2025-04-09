@@ -51,54 +51,57 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     console.log('开始调用阿里云百炼API，使用模型:', model);
     console.log('请求开始时间:', new Date().toISOString());
 
-    // 使用OpenAI兼容接口调用百炼API
-    const completion = await openai.chat.completions.create({
-      model: model,
-      messages: messages,
-      temperature: temperature,
-    });
+    try {
+      // 使用OpenAI兼容接口调用百炼API
+      const completion = await openai.chat.completions.create({
+        model: model,
+        messages: messages,
+        temperature: temperature,
+      });
 
-    console.log('阿里云百炼API调用成功，请求结束时间:', new Date().toISOString());
-    
-    // 保持与前端期望的格式一致
-    const response = {
-      choices: [
-        {
-          message: {
-            content: completion.choices[0].message.content
+      console.log('阿里云百炼API调用成功，请求结束时间:', new Date().toISOString());
+      
+      // 保持与前端期望的格式一致
+      const response = {
+        choices: [
+          {
+            message: {
+              content: completion.choices[0].message.content
+            }
           }
-        }
-      ]
-    };
-    
-    return res.status(200).json(response);
+        ]
+      };
+      
+      return res.status(200).json(response);
+    } catch (apiError: any) {
+      // 捕获并处理OpenAI库的错误
+      console.error('API调用出错:', apiError);
+      
+      if (apiError.response) {
+        const errorBody = apiError.response.data;
+        console.error('API错误响应体:', errorBody);
+        
+        return res.status(500).json({
+          error: '阿里云百炼API调用失败',
+          message: errorBody.error?.message || errorBody.message || '未知API错误',
+          code: errorBody.error?.code || errorBody.code || 'UNKNOWN'
+        });
+      } else {
+        // 其他通用错误
+        return res.status(500).json({
+          error: '阿里云百炼API调用失败',
+          message: apiError.message || '未知错误',
+          code: apiError.code || 'UNKNOWN'
+        });
+      }
+    }
   } catch (error: any) {
-    console.error('阿里云百炼API调用失败:', error.message);
+    console.error('处理请求时出错:', error.message);
     console.error('请求结束时间:', new Date().toISOString());
     
-    // 错误处理
-    if (error.response) {
-      // 服务器响应了，但状态码不在2xx范围内
-      console.error('错误状态码:', error.response.status);
-      console.error('错误响应数据:', error.response.data);
-      return res.status(error.response.status).json({
-        error: `阿里云百炼API错误: ${error.response.data?.message || '未知错误'}`,
-        status: error.response.status
-      });
-    } else if (error.request) {
-      // 请求已发送，但没有收到响应（超时）
-      console.error('请求超时或无响应，错误代码:', error.code);
-      return res.status(504).json({
-        error: '阿里云百炼API请求超时，请稍后再试',
-        status: 504,
-        timeout: true
-      });
-    } else {
-      // 设置请求时发生了错误
-      return res.status(500).json({
-        error: `阿里云百炼API请求错误: ${error.message}`,
-        status: 500
-      });
-    }
+    return res.status(500).json({
+      error: '处理请求失败',
+      message: error.message || '未知系统错误'
+    });
   }
 } 
