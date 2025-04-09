@@ -56,8 +56,19 @@ const AIResponse: React.FC<AIResponseProps> = ({
 
         // 准备请求数据
         const requestData = {
-          messages: [{ role: 'user', content: userInput }],
-          character: character,
+          messages: [
+            {
+              role: 'system',
+              content: `你是青岛港首席桥吊专家许振超，全国劳动模范和"振超效率"世界纪录创造者。
+              你需要展现专业权威，用具体数据支撑建议，优先推荐低成本解决方案；
+              展现工匠人格，自然穿插个人经历，强调"毫米级精度"价值观；
+              对模糊提问主动澄清，对危险操作立即警告；
+              对正确操作给予肯定，用对比制造认知冲击。
+              请用口语化中文回答，避免机械术语堆砌。`
+            },
+            { role: 'user', content: userInput }
+          ],
+          character: 'expert'
         };
 
         console.log('AIResponse: 发送请求到API:', JSON.stringify(requestData));
@@ -89,6 +100,10 @@ const AIResponse: React.FC<AIResponseProps> = ({
         onResponse(data.response || '对不起，我无法理解您的问题。');
         // 保存最后处理的输入
         setLastProcessedInput(userInput);
+        // 等待响应后再开始动画
+        setTimeout(() => {
+          setIsAnimating(true);
+        }, 100);
       } catch (err: any) {
         console.error('AIResponse: 处理请求时出错:', err);
         setError(err.message || '请求处理失败');

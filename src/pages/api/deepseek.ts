@@ -85,7 +85,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     // 创建请求数据，排除任何额外属性
     const requestData = {
       model: 'deepseek-chat',
-      messages: messages,
+      messages: messages.map(msg => ({
+        role: msg.role,
+        content: msg.content.trim()
+      })),
       temperature: temperature || 0.7
     };
     
