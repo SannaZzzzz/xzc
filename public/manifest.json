@@ -1,0 +1,9 @@
+{
+  "name": "虚拟许振超 | AI交互平台",
+  "short_name": "虚拟许振超",
+  "description": "青岛港首席桥吊专家许振超的智能助手",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0f1e",
+  "theme_color": "#38bdf8"
+} 

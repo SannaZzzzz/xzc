@@ -1,0 +1,72 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --foreground-rgb: 255, 255, 255;
+  --background-start-rgb: 10, 15, 30;
+  --background-end-rgb: 5, 10, 20;
+  --accent-color: 56, 189, 248;
+  --accent-glow: 56, 189, 248, 0.5;
+  --neon-border: 0 0 5px rgba(56, 189, 248, 0.5), 0 0 10px rgba(56, 189, 248, 0.3);
+}
+
+@layer base {
+  html {
+    scroll-behavior: smooth;
+  }
+}
+
+@layer components {
+  .tech-card {
+    @apply bg-opacity-80 backdrop-filter backdrop-blur-sm border border-opacity-20 shadow-lg;
+    border-color: rgba(var(--accent-color), 0.3);
+    box-shadow: var(--neon-border);
+  }
+  
+  .tech-title {
+    @apply relative inline-block;
+    text-shadow: 0 0 10px rgba(var(--accent-glow));
+  }
+  
+  .glowing-border {
+    box-shadow: var(--neon-border);
+  }
+}
+
+body {
+  color: rgb(var(--foreground-rgb));
+  background: linear-gradient(
+      to bottom,
+      transparent,
+      rgb(var(--background-end-rgb))
+    )
+    rgb(var(--background-start-rgb));
+}
+
+.grid-pattern {
+  background-image: 
+    linear-gradient(rgba(56, 189, 248, 0.1) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(56, 189, 248, 0.1) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+.animate-glow {
+  animation: glow 1.5s ease-in-out infinite alternate;
+}
+
+@keyframes glow {
+  from {
+    box-shadow: 0 0 5px rgba(56, 189, 248, 0.5);
+  }
+  to {
+    box-shadow: 0 0 15px rgba(56, 189, 248, 0.8), 0 0 20px rgba(56, 189, 248, 0.5);
+  }
+}
+
+/* 移动端优化 */
+@media (max-width: 768px) {
+  .tech-card {
+    @apply py-4 px-3;
+  }
+}
