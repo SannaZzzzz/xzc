@@ -103,41 +103,39 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${apiKey}`
         },
-        timeout: 30000
+        timeout: 360000  // 增加到360秒（6分钟）
       }
     );
 
-    console.log('DeepSeek API调用成功');
-    
-    // 返回API响应
+    // 处理响应
+    console.log('DeepSeek API调用成功。');
     return res.status(200).json(response.data);
   } catch (error: any) {
     console.error('DeepSeek API调用失败:', error.message);
     
-    // 提供详细的错误信息
+    // 更详细的错误日志
     if (error.response) {
-      // 服务器响应了但状态码不在2xx范围内
-      console.error('API错误响应状态:', error.response.status);
-      console.error('API错误响应数据:', JSON.stringify(error.response.data));
-      
+      // 服务器响应了，但状态码不在2xx范围内
+      console.error('错误状态码:', error.response.status);
+      console.error('错误响应数据:', error.response.data);
       return res.status(error.response.status).json({
-        error: '调用DeepSeek API失败',
-        details: error.response.data,
-        message: error.response.data?.error?.message || '服务器返回了错误响应'
+        error: `DeepSeek API错误: ${error.response.data?.error?.message || '未知错误'}`,
+        status: error.response.status
       });
     } else if (error.request) {
-      // 请求已发送但没收到响应
-      console.error('未收到API响应');
-      return res.status(500).json({ 
-        error: '未收到DeepSeek API响应',
-        message: '服务器未响应，请检查网络连接或DeepSeek服务是否可用'
+      // 请求已发送，但没有收到响应（超时）
+      console.error('请求超时或无响应');
+      return res.status(504).json({
+        error: 'DeepSeek API请求超时，请稍后再试',
+        status: 504,
+        timeout: true
+      });
+    } else {
+      // 设置请求时发生了错误
+      return res.status(500).json({
+        error: `DeepSeek API请求错误: ${error.message}`,
+        status: 500
       });
     }
-    
-    // 其他错误
-    return res.status(500).json({ 
-      error: '服务器内部错误', 
-      message: error.message || '未知错误' 
-    });
   }
 }

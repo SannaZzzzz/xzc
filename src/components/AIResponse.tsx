@@ -137,7 +137,20 @@ const AIResponse: React.FC<AIResponseProps> = ({
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`请求失败 (${response.status}): ${errorText}`);
+        let errorObj;
+        try {
+          errorObj = JSON.parse(errorText);
+        } catch (e) {
+          // 如果不是JSON格式
+          errorObj = { error: errorText };
+        }
+        
+        // 特殊处理504超时错误
+        if (response.status === 504 || errorObj.timeout) {
+          throw new Error('服务器响应超时，请稍后重试');
+        }
+        
+        throw new Error(`请求失败 (${response.status}): ${errorObj.error || errorText}`);
       }
 
       const data = await response.json();
@@ -181,7 +194,10 @@ const AIResponse: React.FC<AIResponseProps> = ({
     } catch (error: any) {
       console.error('处理响应时出错:', error);
       
-      if (error.response) {
+      // 特殊处理超时错误
+      if (error.message && error.message.includes('超时')) {
+        setError(`${error.message}（请求处理时间较长）`);
+      } else if (error.response) {
         console.error('错误响应数据:', error.response.data);
         console.error('错误状态码:', error.response.status);
         setError(`处理失败: 服务器返回错误 (${error.response.status}) - ${error.response.data?.error?.message || '未知错误'}`);

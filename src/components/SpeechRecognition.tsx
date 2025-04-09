@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import SpeechRecognitionService from '../utils/speechRecognition';
 
 interface SpeechRecognitionProps {
   onResult: (transcript: string) => void;
@@ -13,7 +14,11 @@ const SpeechRecognition: React.FC<SpeechRecognitionProps> = ({
 }) => {
   const [error, setError] = useState<string>('');
   const [animationFrame, setAnimationFrame] = useState(0);
-  const [transcript, setTranscript] = useState<string>(''); // 存储识别结果以便调试
+  const [transcript, setTranscript] = useState<string>(''); // 存储最终识别结果
+  const [interimResult, setInterimResult] = useState<string>(''); // 当前识别会话的临时结果
+  const [accumulatedText, setAccumulatedText] = useState<string>(''); // 累积的识别文本
+  const [speechService] = useState(() => SpeechRecognitionService.getInstance());
+  const [sessionDuration, setSessionDuration] = useState<number>(0); // 会话持续时间（秒）
 
   // 麦克风动画效果
   useEffect(() => {
@@ -33,72 +38,118 @@ const SpeechRecognition: React.FC<SpeechRecognitionProps> = ({
     };
   }, [isListening]);
 
+  // 会话持续时间计时器
   useEffect(() => {
-    // 检查浏览器是否支持语音识别
-    if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-      setError('您的浏览器不支持语音识别功能。请使用Chrome或Edge浏览器。');
-      return;
-    }
-
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const recognition = new SpeechRecognition();
-
-    recognition.lang = 'zh-CN'; // 设置语言为中文
-    recognition.continuous = false; // 设置为非连续模式
-    recognition.interimResults = false; // 不返回临时结果
-
-    recognition.onresult = (event: any) => {
-      const text = event.results[0][0].transcript;
-      console.log('语音识别结果:', text);
-      setTranscript(text); // 保存识别结果以便调试
-      
-      // 确保识别结果不为空
-      if (text && text.trim()) {
-        console.log('调用onResult回调传递语音识别结果');
-        onResult(text);
-      } else {
-        console.error('语音识别结果为空');
-        setError('未能识别您的语音，请重试。');
-      }
-      
-      setIsListening(false);
-    };
-
-    recognition.onerror = (event: any) => {
-      console.error('语音识别错误:', event.error);
-      setError(`语音识别错误: ${event.error}`);
-      setIsListening(false);
-    };
-
-    recognition.onend = () => {
-      console.log('语音识别结束，最终结果:', transcript);
-      setIsListening(false);
-    };
-
-    // 根据isListening状态开始或停止语音识别
+    let timerId: NodeJS.Timeout;
+    
     if (isListening) {
-      try {
-        console.log('开始语音识别...');
-        recognition.start();
-      } catch (e) {
-        console.error('启动语音识别失败:', e);
-      }
+      setSessionDuration(0);
+      
+      timerId = setInterval(() => {
+        setSessionDuration(prev => prev + 1);
+      }, 1000);
     } else {
-      try {
-        recognition.stop();
-      } catch (e) {
-        // 忽略未启动时停止的错误
-      }
+      setSessionDuration(0);
+    }
+    
+    return () => {
+      if (timerId) clearInterval(timerId);
+    };
+  }, [isListening]);
+
+  // 初始化并检查支持
+  useEffect(() => {
+    if (!speechService.isSupported()) {
+      setError('您的浏览器不支持语音识别功能。请使用Chrome或Edge浏览器。');
+    }
+  }, [speechService]);
+
+  // 控制语音识别状态
+  useEffect(() => {
+    // 根据isListening状态控制语音识别
+    if (isListening) {
+      // 开始新识别会话时清空临时识别结果
+      setInterimResult('');
+      setAccumulatedText('');
+      
+      speechService.startListening({
+        onStart: () => {
+          console.log('语音识别已启动');
+          setError('');
+        },
+        onResult: (text, isFinal) => {
+          // 无论是否是最终结果，都更新界面显示
+          if (!isFinal) {
+            setInterimResult(text);
+          } else {
+            // 更新累积文本显示，但不触发输入
+            console.log('收到最终片段:', text);
+          }
+        },
+        onEnd: (finalText) => {
+          console.log('语音识别手动结束，累积结果:', finalText);
+          if (finalText && finalText.trim()) {
+            // 只有在用户手动停止识别时才发送完整的累积文本
+            setTranscript(finalText);
+            onResult(finalText);
+          } else if (!finalText.trim()) {
+            setError('未能识别您的语音，请重试。');
+          }
+          setIsListening(false);
+        },
+        onError: (err) => {
+          // 忽略"no-speech"错误，它会自动重启
+          if (err === 'no-speech') return;
+          
+          console.error('语音识别错误:', err);
+          setError(`语音识别错误: ${err}`);
+          setIsListening(false);
+        }
+      });
+    } else {
+      // 用户点击停止按钮
+      speechService.stopListening();
     }
 
     return () => {
-      try {
-        recognition.stop();
-      } catch (e) {
-        // 忽略未启动时停止的错误
+      // 组件卸载时停止语音识别
+      if (isListening) {
+        speechService.stopListening();
       }
     };
-  }, [isListening, onResult, setIsListening, transcript]);
+  }, [isListening, onResult, setIsListening, speechService]);
+
+  // 更新累积文本显示
+  useEffect(() => {
+    const updateAccumulatedText = (event: any) => {
+      if (!isListening) return;
+      
+      try {
+        // 尝试获取所有识别结果
+        if (event.results) {
+          let fullText = '';
+          
+          // 遍历所有识别结果
+          for (let i = 0; i < event.results.length; i++) {
+            fullText += event.results[i][0].transcript + ' ';
+          }
+          
+          setAccumulatedText(fullText.trim());
+        }
+      } catch (err) {
+        console.error('获取累积文本失败:', err);
+      }
+    };
+    
+    // 监听识别结果事件
+    if (isListening && speechService.isSupported()) {
+      document.addEventListener('result', updateAccumulatedText);
+    }
+    
+    return () => {
+      document.removeEventListener('result', updateAccumulatedText);
+    };
+  }, [isListening, speechService]);
 
   // 渲染麦克风波纹动画
   const renderMicWaves = () => {
@@ -112,14 +163,24 @@ const SpeechRecognition: React.FC<SpeechRecognitionProps> = ({
     );
   };
 
+  // 切换语音识别
+  const toggleSpeechRecognition = () => {
+    console.log('语音按钮被点击，当前状态:', isListening ? '正在听' : '未开始');
+    setIsListening(!isListening);
+  };
+
+  // 格式化会话时长
+  const formatDuration = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  };
+
   return (
     <div className="mt-4">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <button
-          onClick={() => {
-            console.log('语音按钮被点击，当前状态:', isListening ? '正在听' : '未开始');
-            setIsListening(!isListening);
-          }}
+          onClick={toggleSpeechRecognition}
           className={`relative px-5 py-2 sm:px-6 sm:py-3 rounded-full text-white font-medium transition-all duration-300 ${
             isListening 
               ? 'bg-red-600 animate-pulse shadow-neon-hover' 
@@ -142,13 +203,39 @@ const SpeechRecognition: React.FC<SpeechRecognitionProps> = ({
                 d="M19 11a7 7 0 01-7 7m0 0a7 7 0 01-7-7m7 7v4m0 0H8m4 0h4m-4-8a3 3 0 01-3-3V5a3 3 0 116 0v6a3 3 0 01-3 3z" 
               />
             </svg>
-            {isListening ? '正在听...' : '开始语音输入'}
+            {isListening ? '点击结束录音' : '开始语音输入'}
           </div>
         </button>
-        <div className="text-xs text-gray-400 text-center sm:text-right animate-pulse-slow">
-          {isListening ? '请说话...' : '点击按钮开始语音输入'}
+        <div className="text-xs text-gray-400 text-center sm:text-right">
+          {isListening ? (
+            <div className="flex flex-col">
+              <span className="animate-pulse">正在录音... {formatDuration(sessionDuration)}</span>
+              <span className="text-green-400 text-xs">说完后点击按钮结束</span>
+            </div>
+          ) : (
+            '点击按钮开始语音输入'
+          )}
         </div>
       </div>
+      
+      {/* 临时识别结果 */}
+      {isListening && interimResult && (
+        <div className="mt-2 p-2 bg-gray-800/50 border border-gray-700/50 rounded-md">
+          <p className="text-xs text-gray-300">
+            <span className="font-medium">正在识别:</span> {interimResult}
+          </p>
+        </div>
+      )}
+      
+      {/* 累积识别结果，在录音过程中显示 */}
+      {isListening && accumulatedText && (
+        <div className="mt-2 p-2 bg-gray-900/80 border border-tech-blue/30 rounded-md">
+          <p className="text-xs text-tech-blue-light">
+            <span className="font-medium">累积内容:</span> {accumulatedText}
+          </p>
+        </div>
+      )}
+      
       {error && (
         <div className="mt-2 p-2 bg-red-900/50 border border-red-500/30 rounded-md text-sm text-red-200">
           <p className="flex items-center">
@@ -159,9 +246,10 @@ const SpeechRecognition: React.FC<SpeechRecognitionProps> = ({
           </p>
         </div>
       )}
-      {transcript && (
+      
+      {transcript && !isListening && (
         <div className="mt-2 text-xs text-gray-400">
-          <span className="font-medium">您刚才说:</span> {transcript}
+          <span className="font-medium">识别内容:</span> {transcript}
         </div>
       )}
     </div>
