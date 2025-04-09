@@ -1,5 +1,5 @@
+// 使用后端API路由获取讯飞连接信息
+// 不再在前端存储API密钥
 export const xfyunConfig = {
-  APPID: process.env.NEXT_PUBLIC_XFYUN_APPID,
-  APISecret: process.env.NEXT_PUBLIC_XFYUN_API_SECRET,
-  APIKey: process.env.NEXT_PUBLIC_XFYUN_API_KEY
+  useBackendApi: true  // 标记使用后端API
 }; 

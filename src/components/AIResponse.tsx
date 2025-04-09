@@ -10,8 +10,8 @@ interface AIResponseProps {
   setIsAnimating: (isAnimating: boolean) => void;
 }
 
-// 使用环境变量获取API密钥
-const DEEPSEEK_API_KEY = process.env.NEXT_PUBLIC_DEEPSEEK_API_KEY;
+// 删除前端API密钥
+// const DEEPSEEK_API_KEY = process.env.NEXT_PUBLIC_DEEPSEEK_API_KEY || 'sk-4131fde6b2fd4635b71691fe3bb537b6';
 
 const AIResponse: React.FC<AIResponseProps> = ({
   userInput,
@@ -65,28 +65,16 @@ const AIResponse: React.FC<AIResponseProps> = ({
 
 请用口语化中文回答，避免机械术语堆砌，必要时用类比来解释，比如"这个集装箱调度就像是在玩华容道"。不要使用括号，不要描述动作，只需要生成对话内容。`;
 
-      // 直接调用DeepSeek API，不使用CORS代理
-      const url = 'https://api.deepseek.com/v1/chat/completions';
+      // 使用后端API路由代理请求，不再直接调用DeepSeek API
+      console.log('发送请求到后端API路由');
       
-      // 构建请求参数
-      const payload = {
-        model: "deepseek-chat",
+      // 调用我们的API路由
+      const response = await axios.post('/api/deepseek', {
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userInput }
         ],
         temperature: 0.7
-      };
-      
-      console.log('发送请求到:', url);
-      
-      // 发送API请求
-      const response = await axios.post(url, payload, {
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${DEEPSEEK_API_KEY}`
-        },
-        timeout: 30000
       });
       
       // 解析响应
