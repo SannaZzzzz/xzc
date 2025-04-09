@@ -188,7 +188,7 @@ export default function Home() {
         )}
         
         <footer className="mt-6 text-center text-sm text-gray-400">
-          <p>© {new Date().getFullYear()} 虚拟许振超 | AI交互平台</p>
+          <p>© {new Date().getFullYear()} 虚拟许振超 | 粤水电AI交互平台</p>
           <p className="mt-1">支持桌面端和移动端访问，推荐使用Edge浏览器访问</p>
         </footer>
       </main>
