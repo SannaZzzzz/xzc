@@ -3,6 +3,7 @@ import { XFYunWebsocket } from '../utils/xfyunWebsocket';
 import { xfyunConfig } from '../config/xfyunConfig';
 import MobileTTS from '../utils/mobileTTS';
 import axios from 'axios';
+import { TTSConfig } from '../utils/mobileTTS';
 
 interface AIResponseProps {
   userInput: string;
@@ -32,12 +33,22 @@ const AIResponse: React.FC<AIResponseProps> = ({
     }
     return false;
   });
+  const [ttsError, setTTSError] = useState<string | null>(null);
+  const [isRetrying, setIsRetrying] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
 
   const demoResponses = [
     "我理解你的问题是关于桥吊设备的维护。作为一名桥吊专家，我建议定期检查钢丝绳的磨损情况。从我30年的经验来看，钢丝绳磨损超过5%就必须更换，哪怕看起来还能用。记住，1厘米的误差就可能酿成大祸。",
     "作为一名桥吊操作员，你的操作技巧非常关键。正确的操作可以提高效率20%以上，同时减少50%的设备磨损。我当年手绘电路图时就发现这个规律：精细操作不仅提高效率，更能延长设备寿命。你们车间最近的维护手法很专业，有金牌班组的水平！",
     "关于集装箱调度，我建议使用三点定位法。这比德国方案快3倍，我们只需要3小时就能完成他们需要一整天的工作量。这个方法成本只有2千元，不需要购买那种动辄上万的高端设备。你提到的问题是设备横向晃动还是纵向晃动？这关系到解决方案的选择。"
   ];
+
+  const voiceConfig = {
+    speed: 5,
+    pitch: 5,
+    volume: 5,
+    person: 5003
+  };
 
   useEffect(() => {
     // 当用户输入变化且非空时，处理响应
@@ -46,39 +57,64 @@ const AIResponse: React.FC<AIResponseProps> = ({
     }
   }, [userInput]);
 
-  const handleMobileTTS = async (text: string) => {
+  const handleTTS = async (text: string) => {
+    setTTSError(null);
+    setIsAnimating(true);
+    setIsRetrying(false);
+
     try {
-      const mobileTTS = MobileTTS.getInstance();
-      await mobileTTS.speak(text, {
-        speed: 4,     // 语速，默认4
-        pitch: 4,     // 音调，默认4
-        volume: 5,    // 音量，默认5
-        person: 5003  // 发音人，默认为度逍遥
-      }, {
-        onStart: () => setIsAnimating(true),
-        onEnd: () => setIsAnimating(false)
-      });
-    } catch (err) {
-      console.error('移动端语音合成错误:', err);
+      if (isMobile) {
+        const mobileTTS = MobileTTS.getInstance();
+        await mobileTTS.speak(text, {
+          speed: 4,
+          pitch: 4,
+          volume: 5,
+          person: 5003,
+          onStart: () => {
+            setIsAnimating(true);
+            setTTSError(null);
+          },
+          onEnd: () => {
+            setIsAnimating(false);
+          }
+        });
+      } else {
+        await xfyunTTS.startSynthesis(text, voiceConfig, {
+          onStart: () => {
+            setIsAnimating(true);
+            setTTSError(null);
+          },
+          onEnd: () => {
+            setIsAnimating(false);
+          }
+        });
+      }
+    } catch (err: any) {
+      console.error('TTS错误:', err);
       setIsAnimating(false);
       
-      // 如果移动端TTS失败，尝试使用讯飞TTS作为备选
-      try {
-        console.warn('移动端TTS失败，尝试使用讯飞TTS');
-        const voiceConfig = {
-          vcn: 'x4_lingbosong',
-          speed: 50,
-          pitch: 50,
-          volume: 50
-        };
-        
-        await xfyunTTS.startSynthesis(text, voiceConfig, {
-          onStart: () => setIsAnimating(true),
-          onEnd: () => setIsAnimating(false)
-        });
-      } catch (fallbackErr) {
-        console.error('备选语音合成也失败:', fallbackErr);
-        setIsAnimating(false);
+      // 设置具体的错误信息
+      if (err.message.includes('超时')) {
+        setTTSError('语音合成超时，请检查网络连接');
+      } else if (err.message.includes('API请求失败')) {
+        setTTSError('语音服务暂时不可用，请稍后重试');
+      } else {
+        setTTSError(`语音合成失败: ${err.message}`);
+      }
+
+      // 如果是移动端，尝试使用备选方案
+      if (isMobile) {
+        try {
+          setIsRetrying(true);
+          setTTSError('正在尝试备选语音服务...');
+          await xfyunTTS.startSynthesis(text, voiceConfig);
+          setTTSError(null);
+        } catch (fallbackErr: any) {
+          console.error('备选TTS也失败:', fallbackErr);
+          setTTSError('所有语音服务都失败，请稍后重试');
+        } finally {
+          setIsRetrying(false);
+        }
       }
     }
   };
@@ -143,31 +179,7 @@ const AIResponse: React.FC<AIResponseProps> = ({
       onResponse(aiText);
       
       // 根据设备类型选择不同的语音处理方式
-      if (isMobile) {
-        await handleMobileTTS(aiText);
-      } else {
-        // 桌面端保持原有的讯飞语音处理
-        try {
-          const voiceConfig = {
-            vcn: 'x4_lingbosong',
-            speed: 50,
-            pitch: 50,
-            volume: 50
-          };
-          
-          await xfyunTTS.startSynthesis(aiText, voiceConfig, {
-            onStart: () => {
-              setIsAnimating(true);
-            },
-            onEnd: () => {
-              setIsAnimating(false);
-            }
-          });
-        } catch (err) {
-          console.error('语音合成错误:', err);
-          setIsAnimating(false);
-        }
-      }
+      await handleTTS(aiText);
       
     } catch (error: any) {
       console.error('处理响应时出错:', error);
@@ -219,38 +231,55 @@ const AIResponse: React.FC<AIResponseProps> = ({
   };
 
   return (
-    <div className="mt-4">
-      <div className="flex gap-2 mt-2">
-        <button
-          onClick={demoMode ? useDemoResponseForQuery : processUserInput}
-          disabled={isProcessing || !userInput.trim()}
-          className={`flex-1 py-2 rounded-md font-medium ${
-            isProcessing || !userInput.trim()
-              ? 'bg-gray-600 cursor-not-allowed'
-              : 'bg-blue-600 hover:bg-blue-700'
-          }`}
-        >
-          {isProcessing ? '处理中...' : '获取响应'}
-        </button>
+    <div className="relative">
+      <div className="mt-4">
+        <div className="flex gap-2 mt-2">
+          <button
+            onClick={demoMode ? useDemoResponseForQuery : processUserInput}
+            disabled={isProcessing || !userInput.trim()}
+            className={`flex-1 py-2 rounded-md font-medium ${
+              isProcessing || !userInput.trim()
+                ? 'bg-gray-600 cursor-not-allowed'
+                : 'bg-blue-600 hover:bg-blue-700'
+            }`}
+          >
+            {isProcessing ? '处理中...' : '获取响应'}
+          </button>
+          
+          <button
+            onClick={() => setDemoMode(!demoMode)}
+            className={`px-3 py-2 rounded-md font-medium ${
+              demoMode ? 'bg-green-600' : 'bg-gray-700'
+            }`}
+            title={demoMode ? "已启用演示模式" : "启用演示模式"}
+          >
+            演示
+          </button>
+        </div>
         
-        <button
-          onClick={() => setDemoMode(!demoMode)}
-          className={`px-3 py-2 rounded-md font-medium ${
-            demoMode ? 'bg-green-600' : 'bg-gray-700'
-          }`}
-          title={demoMode ? "已启用演示模式" : "启用演示模式"}
-        >
-          演示
-        </button>
+        {demoMode && (
+          <div className="mt-2 text-xs text-green-400 bg-green-900/30 p-2 rounded-md">
+            已启用演示模式，将使用预设响应，无需API调用
+          </div>
+        )}
+        
+        {error && <p className="text-red-500 mt-2 text-sm">{error}</p>}
       </div>
       
-      {demoMode && (
-        <div className="mt-2 text-xs text-green-400 bg-green-900/30 p-2 rounded-md">
-          已启用演示模式，将使用预设响应，无需API调用
+      {/* TTS错误提示 */}
+      {ttsError && (
+        <div className="absolute bottom-full left-0 mb-2 w-full">
+          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-2 rounded relative" role="alert">
+            <span className="block sm:inline">{ttsError}</span>
+            {isRetrying && (
+              <div className="mt-1">
+                <div className="inline-block animate-spin rounded-full h-4 w-4 border-t-2 border-red-700 mr-2"></div>
+                正在重试...
+              </div>
+            )}
+          </div>
         </div>
       )}
-      
-      {error && <p className="text-red-500 mt-2 text-sm">{error}</p>}
     </div>
   );
 };

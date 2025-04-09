@@ -35,7 +35,11 @@ async function getBaiduToken() {
     }
 
     const response = await axios.post(
-      `https://aip.baidubce.com/oauth/2.0/token?grant_type=client_credentials&client_id=${BAIDU_API_KEY}&client_secret=${BAIDU_SECRET_KEY}`
+      `https://aip.baidubce.com/oauth/2.0/token?grant_type=client_credentials&client_id=${BAIDU_API_KEY}&client_secret=${BAIDU_SECRET_KEY}`,
+      null,
+      {
+        timeout: 5000, // 5秒超时
+      }
     );
 
     // 缓存token，设置过期时间为29天（百度token有效期30天）
@@ -58,6 +62,9 @@ function validateText(text: string): boolean {
 }
 
 export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+  // 设置响应超时
+  res.setTimeout(55000); // 55秒超时，留5秒缓冲
+
   // 应用速率限制
   await new Promise((resolve) => limiter(req, res, resolve));
 
@@ -109,7 +116,9 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         headers: {
           'Content-Type': 'application/x-www-form-urlencoded',
           'Accept': '*/*'
-        }
+        },
+        timeout: 30000, // 30秒超时
+        maxContentLength: 10 * 1024 * 1024 // 限制响应大小为10MB
       }
     );
 
@@ -129,6 +138,20 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
     }
   } catch (error: any) {
     console.error('百度TTS API错误:', error);
+    
+    // 细化错误处理
+    if (axios.isAxiosError(error)) {
+      if (error.code === 'ECONNABORTED') {
+        return res.status(504).json({ error: '请求超时', details: '服务响应时间过长' });
+      }
+      if (error.response) {
+        return res.status(error.response.status).json({
+          error: '语音合成失败',
+          details: error.response.data?.error_msg || error.message
+        });
+      }
+    }
+    
     return res.status(500).json({ 
       error: '语音合成失败',
       details: error.message 
