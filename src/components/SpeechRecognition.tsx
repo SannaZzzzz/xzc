@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import SpeechRecognitionService from '../utils/speechRecognition';
+import BaiduASR from '../utils/baiduASR';
 
 interface SpeechRecognitionProps {
   onResult: (transcript: string) => void;
@@ -17,8 +18,21 @@ const SpeechRecognition: React.FC<SpeechRecognitionProps> = ({
   const [transcript, setTranscript] = useState<string>(''); // 存储最终识别结果
   const [interimResult, setInterimResult] = useState<string>(''); // 当前识别会话的临时结果
   const [accumulatedText, setAccumulatedText] = useState<string>(''); // 累积的识别文本
-  const [speechService] = useState(() => SpeechRecognitionService.getInstance());
   const [sessionDuration, setSessionDuration] = useState<number>(0); // 会话持续时间（秒）
+  const [isMobile, setIsMobile] = useState<boolean>(false);
+  const [isUsingBaidu, setIsUsingBaidu] = useState<boolean>(false);
+  const [speechService] = useState(() => SpeechRecognitionService.getInstance());
+  const [baiduService] = useState(() => BaiduASR.getInstance());
+
+  // 检测设备类型
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const isMobileDevice = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+        window.navigator.userAgent
+      );
+      setIsMobile(isMobileDevice);
+    }
+  }, []);
 
   // 麦克风动画效果
   useEffect(() => {
@@ -57,99 +71,116 @@ const SpeechRecognition: React.FC<SpeechRecognitionProps> = ({
     };
   }, [isListening]);
 
-  // 初始化并检查支持
-  useEffect(() => {
-    if (!speechService.isSupported()) {
-      setError('您的浏览器不支持语音识别功能。请使用Chrome或Edge浏览器。');
-    }
-  }, [speechService]);
-
   // 控制语音识别状态
   useEffect(() => {
-    // 根据isListening状态控制语音识别
-    if (isListening) {
-      // 开始新识别会话时清空临时识别结果
-      setInterimResult('');
-      setAccumulatedText('');
-      
-      speechService.startListening({
-        onStart: () => {
-          console.log('语音识别已启动');
-          setError('');
-        },
-        onResult: (text, isFinal) => {
-          // 无论是否是最终结果，都更新界面显示
-          if (!isFinal) {
-            setInterimResult(text);
-          } else {
-            // 更新累积文本显示，但不触发输入
-            console.log('收到最终片段:', text);
-          }
-        },
-        onEnd: (finalText) => {
-          console.log('语音识别手动结束，累积结果:', finalText);
-          if (finalText && finalText.trim()) {
-            // 只有在用户手动停止识别时才发送完整的累积文本
-            setTranscript(finalText);
-            onResult(finalText);
-          } else if (!finalText.trim()) {
-            setError('未能识别您的语音，请重试。');
-          }
-          setIsListening(false);
-        },
-        onError: (err) => {
-          // 忽略"no-speech"错误，它会自动重启
-          if (err === 'no-speech') return;
-          
-          console.error('语音识别错误:', err);
-          setError(`语音识别错误: ${err}`);
-          setIsListening(false);
-        }
-      });
-    } else {
-      // 用户点击停止按钮
-      speechService.stopListening();
-    }
-
-    return () => {
-      // 组件卸载时停止语音识别
-      if (isListening) {
+    if (!isListening) {
+      // 停止所有服务
+      if (isUsingBaidu) {
+        baiduService.stopRecognition();
+      } else {
         speechService.stopListening();
       }
-    };
-  }, [isListening, onResult, setIsListening, speechService]);
-
-  // 更新累积文本显示
-  useEffect(() => {
-    const updateAccumulatedText = (event: any) => {
-      if (!isListening) return;
-      
-      try {
-        // 尝试获取所有识别结果
-        if (event.results) {
-          let fullText = '';
-          
-          // 遍历所有识别结果
-          for (let i = 0; i < event.results.length; i++) {
-            fullText += event.results[i][0].transcript + ' ';
-          }
-          
-          setAccumulatedText(fullText.trim());
-        }
-      } catch (err) {
-        console.error('获取累积文本失败:', err);
-      }
-    };
-    
-    // 监听识别结果事件
-    if (isListening && speechService.isSupported()) {
-      document.addEventListener('result', updateAccumulatedText);
+      return;
     }
-    
+
+    // 开始新识别会话时清空临时识别结果
+    setInterimResult('');
+    setAccumulatedText('');
+
+    // 移动端先尝试使用百度语音识别
+    if (isMobile) {
+      try {
+        baiduService.startRecognition({
+          onStart: () => {
+            console.log('百度语音识别已启动');
+            setIsUsingBaidu(true);
+            setError('');
+          },
+          onResult: (text, isFinal) => {
+            if (!isFinal) {
+              setInterimResult(text);
+            }
+            setAccumulatedText(text);
+          },
+          onEnd: (finalText) => {
+            console.log('百度语音识别完成，结果:', finalText);
+            if (finalText && finalText.trim()) {
+              setTranscript(finalText);
+              onResult(finalText);
+            } else if (!finalText.trim()) {
+              setError('未能识别您的语音，请重试。');
+            }
+            setIsListening(false);
+          },
+          onError: (err) => {
+            console.error('百度语音识别错误:', err);
+            // 百度API失败，回退到Web Speech API
+            setIsUsingBaidu(false);
+            setError('百度语音识别失败，正在尝试备用服务...');
+            
+            // 延迟一点再尝试Web Speech API
+            setTimeout(() => {
+              startWebSpeechRecognition();
+            }, 500);
+          }
+        });
+      } catch (error) {
+        console.error('启动百度语音识别失败:', error);
+        setIsUsingBaidu(false);
+        // 百度API初始化失败，回退到Web Speech API
+        startWebSpeechRecognition();
+      }
+    } else {
+      // 桌面端使用Web Speech API
+      startWebSpeechRecognition();
+    }
+
     return () => {
-      document.removeEventListener('result', updateAccumulatedText);
+      // 组件卸载时停止所有服务
+      baiduService.stopRecognition();
+      speechService.stopListening();
     };
-  }, [isListening, speechService]);
+  }, [isListening, onResult, setIsListening, isMobile]);
+
+  // 启动Web Speech API识别
+  const startWebSpeechRecognition = () => {
+    // 检查Web Speech API支持
+    if (!speechService.isSupported()) {
+      setError('您的浏览器不支持语音识别功能。请使用Chrome或Edge浏览器。');
+      setIsListening(false);
+      return;
+    }
+
+    // 启动Web Speech API
+    speechService.startListening({
+      onStart: () => {
+        console.log('Web语音识别已启动');
+        setError('');
+      },
+      onResult: (text, isFinal) => {
+        if (!isFinal) {
+          setInterimResult(text);
+        }
+      },
+      onEnd: (finalText) => {
+        console.log('Web语音识别完成，结果:', finalText);
+        if (finalText && finalText.trim()) {
+          setTranscript(finalText);
+          onResult(finalText);
+        } else if (!finalText.trim()) {
+          setError('未能识别您的语音，请重试。');
+        }
+        setIsListening(false);
+      },
+      onError: (err) => {
+        if (err === 'no-speech') return;
+        
+        console.error('Web语音识别错误:', err);
+        setError(`语音识别错误: ${err}`);
+        setIsListening(false);
+      }
+    });
+  };
 
   // 渲染麦克风波纹动画
   const renderMicWaves = () => {
@@ -174,6 +205,12 @@ const SpeechRecognition: React.FC<SpeechRecognitionProps> = ({
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
     return `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  };
+
+  // 获取当前使用的服务名称
+  const getServiceName = (): string => {
+    if (!isListening) return '';
+    return isUsingBaidu ? '百度语音识别' : 'Web语音识别';
   };
 
   return (
@@ -209,7 +246,10 @@ const SpeechRecognition: React.FC<SpeechRecognitionProps> = ({
         <div className="text-xs text-gray-400 text-center sm:text-right">
           {isListening ? (
             <div className="flex flex-col">
-              <span className="animate-pulse">正在录音... {formatDuration(sessionDuration)}</span>
+              <span className="animate-pulse">
+                正在录音... {formatDuration(sessionDuration)} 
+                {getServiceName() && <span className="text-green-400 ml-1">[{getServiceName()}]</span>}
+              </span>
               <span className="text-green-400 text-xs">说完后点击按钮结束</span>
             </div>
           ) : (
