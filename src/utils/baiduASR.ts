@@ -37,7 +37,7 @@ class BaiduASR {
     // 如果有有效的token，直接返回
     const now = Date.now();
     if (this.accessToken && this.tokenExpiry > now) {
-      return this.accessToken;
+      return this.accessToken as string;
     }
     
     try {
@@ -48,7 +48,7 @@ class BaiduASR {
         this.accessToken = response.data.access_token;
         // 令牌有效期通常为30天，设置为29天以确保安全
         this.tokenExpiry = now + 29 * 24 * 60 * 60 * 1000;
-        return this.accessToken;
+        return this.accessToken as string;
       } else {
         throw new Error('获取访问令牌失败');
       }
