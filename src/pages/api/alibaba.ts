@@ -8,7 +8,7 @@ const ALIBABA_API_KEY = process.env.ALIBABA_API_KEY;
 const openai = new OpenAI({
   apiKey: ALIBABA_API_KEY,
   baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1",
-  timeout: 60000, // 设置超时为60秒
+  timeout: 360000, // 设置超时为360秒
   maxRetries: 2   // 最多重试2次
 });
 
@@ -83,7 +83,7 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
         messages: messages,
         temperature: temperature,
       }, {
-        timeout: 45000 // 45秒超时，在options参数中设置
+        timeout: 360000 // 360秒超时，在options参数中设置
       });
 
       console.log('阿里云百炼API调用成功，请求结束时间:', new Date().toISOString());

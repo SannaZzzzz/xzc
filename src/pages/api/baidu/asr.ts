@@ -17,7 +17,11 @@ const fileToBuffer = async (file: File): Promise<Buffer> => {
     const reader = fs.createReadStream(file.filepath);
     const chunks: Buffer[] = [];
     
-    reader.on('data', (chunk) => chunks.push(Buffer.from(chunk)));
+    reader.on('data', (chunk: string | Buffer) => {
+      // 如果chunk是string，转换为Buffer；如果已经是Buffer，直接使用
+      const buffer = typeof chunk === 'string' ? Buffer.from(chunk) : chunk;
+      chunks.push(buffer);
+    });
     reader.on('end', () => {
       resolve(Buffer.concat(chunks));
     });
