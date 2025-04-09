@@ -23,6 +23,14 @@ const AIResponse: React.FC<AIResponseProps> = ({
   const [error, setError] = useState('');
   const [xfyunTTS] = useState(() => new XFYunWebsocket(xfyunConfig));
   const [demoMode, setDemoMode] = useState(false);
+  const [isMobile] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+        window.navigator.userAgent
+      );
+    }
+    return false;
+  });
 
   const demoResponses = [
     "我理解你的问题是关于桥吊设备的维护。作为一名桥吊专家，我建议定期检查钢丝绳的磨损情况。从我30年的经验来看，钢丝绳磨损超过5%就必须更换，哪怕看起来还能用。记住，1厘米的误差就可能酿成大祸。",
@@ -36,6 +44,44 @@ const AIResponse: React.FC<AIResponseProps> = ({
       processUserInput();
     }
   }, [userInput]);
+
+  const handleMobileTTS = async (text: string) => {
+    try {
+      // 移动端使用Web Speech API
+      if ('speechSynthesis' in window) {
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = 'zh-CN';
+        utterance.onstart = () => {
+          setIsAnimating(true);
+        };
+        utterance.onend = () => {
+          setIsAnimating(false);
+        };
+        speechSynthesis.speak(utterance);
+      } else {
+        console.warn('移动端不支持Web Speech API，尝试使用讯飞TTS');
+        // 如果Web Speech API不可用，回退到讯飞TTS
+        const voiceConfig = {
+          vcn: 'x4_lingbosong',
+          speed: 50,
+          pitch: 50,
+          volume: 50
+        };
+        
+        await xfyunTTS.startSynthesis(text, voiceConfig, {
+          onStart: () => {
+            setIsAnimating(true);
+          },
+          onEnd: () => {
+            setIsAnimating(false);
+          }
+        });
+      }
+    } catch (err) {
+      console.error('移动端语音合成错误:', err);
+      setIsAnimating(false);
+    }
+  };
 
   const processUserInput = async () => {
     if (!userInput.trim() || isProcessing) return;
@@ -96,27 +142,31 @@ const AIResponse: React.FC<AIResponseProps> = ({
       // 更新响应
       onResponse(aiText);
       
-      // 使用讯飞语音合成
-      try {
-        const voiceConfig = {
-          vcn: 'x4_lingbosong',
-          speed: 50,
-          pitch: 50,
-          volume: 50
-        };
-        
-        // 等待语音开始播放后再显示动画
-        await xfyunTTS.startSynthesis(aiText, voiceConfig, {
-          onStart: () => {
-            setIsAnimating(true);
-          },
-          onEnd: () => {
-            setIsAnimating(false);
-          }
-        });
-      } catch (err) {
-        console.error('语音合成错误:', err);
-        setIsAnimating(false);
+      // 根据设备类型选择不同的语音处理方式
+      if (isMobile) {
+        await handleMobileTTS(aiText);
+      } else {
+        // 桌面端保持原有的讯飞语音处理
+        try {
+          const voiceConfig = {
+            vcn: 'x4_lingbosong',
+            speed: 50,
+            pitch: 50,
+            volume: 50
+          };
+          
+          await xfyunTTS.startSynthesis(aiText, voiceConfig, {
+            onStart: () => {
+              setIsAnimating(true);
+            },
+            onEnd: () => {
+              setIsAnimating(false);
+            }
+          });
+        } catch (err) {
+          console.error('语音合成错误:', err);
+          setIsAnimating(false);
+        }
       }
       
     } catch (error: any) {
