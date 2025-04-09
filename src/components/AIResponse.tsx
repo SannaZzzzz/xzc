@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { XFYunWebsocket } from '../utils/xfyunWebsocket';
 import { xfyunConfig } from '../config/xfyunConfig';
+import MobileTTS from '../utils/mobileTTS';
 import axios from 'axios';
 
 interface AIResponseProps {
@@ -47,20 +48,23 @@ const AIResponse: React.FC<AIResponseProps> = ({
 
   const handleMobileTTS = async (text: string) => {
     try {
-      // 移动端使用Web Speech API
-      if ('speechSynthesis' in window) {
-        const utterance = new SpeechSynthesisUtterance(text);
-        utterance.lang = 'zh-CN';
-        utterance.onstart = () => {
-          setIsAnimating(true);
-        };
-        utterance.onend = () => {
-          setIsAnimating(false);
-        };
-        speechSynthesis.speak(utterance);
-      } else {
-        console.warn('移动端不支持Web Speech API，尝试使用讯飞TTS');
-        // 如果Web Speech API不可用，回退到讯飞TTS
+      const mobileTTS = MobileTTS.getInstance();
+      await mobileTTS.speak(text, {
+        speed: 4,     // 语速，默认4
+        pitch: 4,     // 音调，默认4
+        volume: 5,    // 音量，默认5
+        person: 5003  // 发音人，默认为度逍遥
+      }, {
+        onStart: () => setIsAnimating(true),
+        onEnd: () => setIsAnimating(false)
+      });
+    } catch (err) {
+      console.error('移动端语音合成错误:', err);
+      setIsAnimating(false);
+      
+      // 如果移动端TTS失败，尝试使用讯飞TTS作为备选
+      try {
+        console.warn('移动端TTS失败，尝试使用讯飞TTS');
         const voiceConfig = {
           vcn: 'x4_lingbosong',
           speed: 50,
@@ -69,17 +73,13 @@ const AIResponse: React.FC<AIResponseProps> = ({
         };
         
         await xfyunTTS.startSynthesis(text, voiceConfig, {
-          onStart: () => {
-            setIsAnimating(true);
-          },
-          onEnd: () => {
-            setIsAnimating(false);
-          }
+          onStart: () => setIsAnimating(true),
+          onEnd: () => setIsAnimating(false)
         });
+      } catch (fallbackErr) {
+        console.error('备选语音合成也失败:', fallbackErr);
+        setIsAnimating(false);
       }
-    } catch (err) {
-      console.error('移动端语音合成错误:', err);
-      setIsAnimating(false);
     }
   };
 
