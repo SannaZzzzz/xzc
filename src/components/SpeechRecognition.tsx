@@ -13,6 +13,7 @@ const SpeechRecognition: React.FC<SpeechRecognitionProps> = ({
 }) => {
   const [error, setError] = useState<string>('');
   const [animationFrame, setAnimationFrame] = useState(0);
+  const [transcript, setTranscript] = useState<string>(''); // 存储识别结果以便调试
 
   // 麦克风动画效果
   useEffect(() => {
@@ -47,8 +48,19 @@ const SpeechRecognition: React.FC<SpeechRecognitionProps> = ({
     recognition.interimResults = false; // 不返回临时结果
 
     recognition.onresult = (event: any) => {
-      const transcript = event.results[0][0].transcript;
-      onResult(transcript);
+      const text = event.results[0][0].transcript;
+      console.log('语音识别结果:', text);
+      setTranscript(text); // 保存识别结果以便调试
+      
+      // 确保识别结果不为空
+      if (text && text.trim()) {
+        console.log('调用onResult回调传递语音识别结果');
+        onResult(text);
+      } else {
+        console.error('语音识别结果为空');
+        setError('未能识别您的语音，请重试。');
+      }
+      
       setIsListening(false);
     };
 
@@ -59,12 +71,14 @@ const SpeechRecognition: React.FC<SpeechRecognitionProps> = ({
     };
 
     recognition.onend = () => {
+      console.log('语音识别结束，最终结果:', transcript);
       setIsListening(false);
     };
 
     // 根据isListening状态开始或停止语音识别
     if (isListening) {
       try {
+        console.log('开始语音识别...');
         recognition.start();
       } catch (e) {
         console.error('启动语音识别失败:', e);
@@ -84,7 +98,7 @@ const SpeechRecognition: React.FC<SpeechRecognitionProps> = ({
         // 忽略未启动时停止的错误
       }
     };
-  }, [isListening, onResult, setIsListening]);
+  }, [isListening, onResult, setIsListening, transcript]);
 
   // 渲染麦克风波纹动画
   const renderMicWaves = () => {
@@ -102,7 +116,10 @@ const SpeechRecognition: React.FC<SpeechRecognitionProps> = ({
     <div className="mt-4">
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
         <button
-          onClick={() => setIsListening(!isListening)}
+          onClick={() => {
+            console.log('语音按钮被点击，当前状态:', isListening ? '正在听' : '未开始');
+            setIsListening(!isListening);
+          }}
           className={`relative px-5 py-2 sm:px-6 sm:py-3 rounded-full text-white font-medium transition-all duration-300 ${
             isListening 
               ? 'bg-red-600 animate-pulse shadow-neon-hover' 
@@ -140,6 +157,11 @@ const SpeechRecognition: React.FC<SpeechRecognitionProps> = ({
             </svg>
             {error}
           </p>
+        </div>
+      )}
+      {transcript && (
+        <div className="mt-2 text-xs text-gray-400">
+          <span className="font-medium">您刚才说:</span> {transcript}
         </div>
       )}
     </div>
